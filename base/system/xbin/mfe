@@ -1,0 +1,87 @@
+#! /system/bin/sh
+
+function inner_ls() {
+    ls -a /system/xbin | grep frida-server
+    return
+}
+
+function kill_fs() {
+    # root      260   1     26856  2632  poll_sched b5f23a5c S frida-server.12.7.18
+    pid=$(ps | grep frida-server | grep -o "[0-9]\{1,\}" | head -1)
+    if [[ $? -ne 0 ]] || [[ $pid == "" ]]; then
+        return
+    fi
+
+    echo "killing pid: $pid"
+    kill -9 $pid
+    
+}
+
+function start_fs() {
+
+    ls /system/xbin/frida-server.$1 >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "frida-server.$1 not exist"
+        return
+    fi
+
+    kill_fs
+    sleep 1
+
+    echo "starting frida-server.$1"
+    frida-server.$1 -D
+
+    # if [ $? -eq 0 ]; then
+    #     echo $1>/system/xbin/magiskfridaenv.conf
+    # fi 
+    
+    sleep 1
+}
+
+
+function usage() {
+    echo ''
+    echo ' ls        list available versions of frida-server'
+    echo ' [version] start the target version of frida-server'
+    echo ''
+}
+
+function inner_boot() {
+    conf="/system/xbin/magiskfridaenv.conf"
+
+    ls $conf >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        last_version=$1
+    else        
+        last_version=$(cat $conf)
+        if [ $last_version == "" ]; then
+            last_version=$1
+        else
+            ls /system/xbin/frida-server.$last_version >/dev/null 2>&1
+            if [ $? -ne 0 ]; then
+                last_version=$1
+            fi
+        fi
+    fi
+
+    start_fs $last_version
+    
+}
+
+if [[ $# -eq 0 ]] || [[ $1 == "help" ]] || [[ $1 == "--help" ]]; then
+    usage
+    exit
+fi
+
+# if [[ $1 == "boot" ]] && [[ $# -eq 2 ]]; then
+#     inner_boot $2
+#     exit
+# fi  
+
+if [[ $1 == "ls" ]] || [[ $1 == "--ls" ]]; then
+    inner_ls
+    exit
+fi
+
+start_fs $1
+exit

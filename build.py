@@ -1,4 +1,7 @@
 #!/user/bin/env python3
+
+import sys
+import getopt
 import lzma
 import os
 import shutil
@@ -26,6 +29,7 @@ def download_file(url, path):
     print("Downloading '{0}' to '{1}'.".format(file_name, path))
 
     if os.path.exists(path):
+        print("Exists.")
         return
 
     r = requests.get(url, allow_redirects=True)
@@ -36,7 +40,8 @@ def download_file(url, path):
 
 
 def extract_file(archive_path, dest_path):
-    print("Extracting '{0}' to '{1}'.".format(os.path.basename(archive_path), os.path.basename(dest_path)))
+    print("Extracting '{0}' to '{1}'.".format(
+        os.path.basename(archive_path), os.path.basename(dest_path)))
 
     with lzma.open(archive_path) as f:
         file_content = f.read()
@@ -49,25 +54,44 @@ def extract_file(archive_path, dest_path):
             out.write(file_content)
 
 
-def create_module_prop(path, frida_release):
+def create_service_script(module_dir, frida_release):
     # Create module.prop file.
-    module_prop = """id=magiskfrida
-name=MagiskFrida
+    service_sh = """#!/system/bin/sh
+# Do NOT assume where your module will be located.
+# ALWAYS use $MODDIR if you need to know where this script
+# and module is placed.
+# This will make sure your module will still work
+# if Magisk change its mount point in the future
+MODDIR={0}
+
+# This script will be executed in late_start service mode
+mfe {1}
+""".format(r'${0%/*}', frida_release)
+
+    with open(os.path.join(module_dir, "common/service.sh"), "w", newline='\n') as f:
+        f.write(service_sh)
+
+
+def create_module_prop(path):
+    # Create module.prop file.
+    module_prop = """id=magiskfridaenv
+name=MagiskFridaEnv
 version=v{0}
 versionCode={1}
-author=AeonLucid
-description=Runs frida-server on boot as root with magisk.
-support=https://github.com/AeonLucid/MagiskFrida/issues
-minMagisk=1530""".format(frida_release, frida_release.replace(".", ""))
+author=toolsRE
+description=Forked from AeonLucid/MagiskFrida. Runs frida-server on boot as root with magisk. And select the version.
+support=https://github.com/toolsRE/MagiskFridaEnv/issues
+minMagisk=1530""".format("0.0.1", "0.0.1".replace(".", ""))  # format(frida_release, frida_release.replace(".", ""))
 
     with open(os.path.join(path, "module.prop"), "w", newline='\n') as f:
         f.write(module_prop)
 
 
-def create_module(platform, frida_release):
+def create_module(platform, frida_releases):
     # Create directory.
     module_dir = os.path.join(PATH_BUILDS, platform)
-    module_zip = os.path.join(PATH_BUILDS, "MagiskFrida-{0}-{1}.zip".format(frida_release, platform))
+    module_zip = os.path.join(
+        PATH_BUILDS, "MagiskFridaEnv-{0}.zip".format(platform))
 
     if os.path.exists(module_dir):
         shutil.rmtree(module_dir)
@@ -82,17 +106,23 @@ def create_module(platform, frida_release):
     os.chdir(module_dir)
 
     # Create module.prop.
-    create_module_prop(module_dir, frida_release)
+    create_module_prop(module_dir)
 
-    # Download frida-server archives.
-    frida_download_url = "https://github.com/frida/frida/releases/download/{0}/".format(frida_release)
-    frida_server = "frida-server-{0}-android-{1}.xz".format(frida_release, platform)
-    frida_server_path = os.path.join(PATH_DOWNLOADS, frida_server)
+    for frida_release in frida_releases:
+        # Download frida-server archives.
+        frida_download_url = "https://github.com/frida/frida/releases/download/{0}/".format(
+            frida_release)
+        frida_server = "frida-server-{0}-android-{1}.xz".format(
+            frida_release, platform)
+        frida_server_path = os.path.join(PATH_DOWNLOADS, frida_server)
 
-    download_file(frida_download_url + frida_server, frida_server_path)
+        download_file(frida_download_url + frida_server, frida_server_path)
 
-    # Extract frida-server to correct path.
-    extract_file(frida_server_path, os.path.join(module_dir, "system/xbin/frida-server"))
+        # Extract frida-server to correct path.
+        extract_file(frida_server_path, os.path.join(
+            module_dir, "system/xbin/frida-server.{0}".format(frida_release)))
+
+    create_service_script(module_dir, frida_releases[0])
 
     # Create flashable zip.
     print("Building Magisk module.")
@@ -114,7 +144,7 @@ def create_module(platform, frida_release):
             zf.write(path, arcname=file_name)
 
 
-def main():
+def main(versions, archs):
     # Create necessary folders.
     if not os.path.exists(PATH_DOWNLOADS):
         os.makedirs(PATH_DOWNLOADS)
@@ -122,19 +152,49 @@ def main():
     if not os.path.exists(PATH_BUILDS):
         os.makedirs(PATH_BUILDS)
 
-    # Fetch frida information.
-    frida_releases_url = "https://api.github.com/repos/frida/frida/releases/latest"
-    frida_releases = requests.get(frida_releases_url).json()
-    frida_release = frida_releases["tag_name"]
-
-    print("Latest frida version is {0}.".format(frida_release))
+    if len(versions) == 0:
+        # Fetch frida information.
+        frida_releases_url = "https://api.github.com/repos/frida/frida/releases/{0}".format(
+            "latest")
+        frida_releases = requests.get(frida_releases_url).json()
+        frida_release = frida_releases["tag_name"]
+        print("Latest frida version is {0}.".format(frida_release))
+        versions.append(frida_release)
 
     # Create flashable modules.
-    create_module("arm", frida_release)
-    create_module("arm64", frida_release)
+    for arch in archs:
+        create_module(arch, versions)
 
     print("Done.")
 
 
+def usage():
+    print(
+        '\n'
+        ' -h --help \n'
+        ' -a --arch=        the arch to be built (one or more of arm/arm64/x86/x86_64) (default to arm and arm64)\n'
+        ' -v --version=     the version to be built (default to latest)\n'
+        ''
+    )
+
+
 if __name__ == "__main__":
-    main()
+    # main(sys.argv[1:])
+    archs, versions = [], []
+    opts, args = getopt.getopt(
+        sys.argv[1:], '-h-a:-v:', ['help', 'arch=', 'version='])
+    for opt_name, opt_value in opts:
+        if opt_name in ('-h', '--help'):
+            usage()
+            exit()
+        if opt_name in ('-a', '--arch'):
+            archs.append(opt_value)
+        if opt_name in ('-v', '--version'):
+            versions.append(opt_value)
+
+    if len(archs) == 0:
+        archs = ['arm', 'arm64']
+
+    print("[*] archs      ", archs)
+    print("[*] versions   ", versions)
+    main(versions, archs)
