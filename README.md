@@ -46,4 +46,4 @@ adb shell su -c "mfe 12.7.13"
 adb shell su -c "mfe --help"
 ```
 
-> Only been tested on `Nexus 5` with Android 6.0.1. 
+> Only been tested on `Nexus 5` with Android 6.0.1 and `Nexus 5X` with Android 8.0.1. 

@@ -120,7 +120,7 @@ def create_module(platform, frida_releases):
 
         # Extract frida-server to correct path.
         extract_file(frida_server_path, os.path.join(
-            module_dir, "system/xbin/frida-server.{0}".format(frida_release)))
+            module_dir, "system/bin/frida-server.{0}".format(frida_release)))
 
     create_service_script(module_dir, frida_releases[0])
 

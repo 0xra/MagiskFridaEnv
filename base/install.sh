@@ -148,11 +148,11 @@ set_permissions() {
   set_perm_recursive $MODPATH 0 0 0755 0644
 
   # Custom permissions
-  for file in `ls $MODPATH/system/xbin/ | grep -e "^frida-server"`; do
-    echo $MODPATH/system/xbin/$file
-    set_perm $MODPATH/system/xbin/$file 0 2000 0755 u:object_r:system_file:s0
+  for file in `ls $MODPATH/system/bin/ | grep -e "^frida-server"`; do
+    echo $MODPATH/system/bin/$file
+    set_perm $MODPATH/system/bin/$file 0 2000 0755 u:object_r:system_file:s0
   done
-  set_perm $MODPATH/system/xbin/mfe 0 2000 0755 u:object_r:system_file:s0
+  set_perm $MODPATH/system/bin/mfe 0 2000 0755 u:object_r:system_file:s0
 }
 
 # You can add more functions to assist your custom script code
