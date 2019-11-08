@@ -46,4 +46,18 @@ adb shell su -c "mfe 12.7.13"
 adb shell su -c "mfe --help"
 ```
 
-> Only been tested on `Nexus 5` with Android 6.0.1 and `Nexus 5X` with Android 8.0.1. 
+![](./01.png)
+
+> Only been tested on `Nexus 5` and `Nexus 5X` with Android 6.0.1 and 8.0.1. 
+
+## `mfe fetch` 
+
+> If you want to use `mfe fetch`, you need to install [`Curl For Android`](https://github.com/Magisk-Modules-Repo/curl) with Magisk Manager first. 
+
+> `x86` is not supported.
+
+`mfe fetch` or `mfe fetch latest` will fetch the latest version of frida-server.  
+
+Or pass the version you want:
+
+`mfe fetch 12.7.18`

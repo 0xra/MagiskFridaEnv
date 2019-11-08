@@ -153,6 +153,8 @@ set_permissions() {
     set_perm $MODPATH/system/bin/$file 0 2000 0755 u:object_r:system_file:s0
   done
   set_perm $MODPATH/system/bin/mfe 0 2000 0755 u:object_r:system_file:s0
+  # https://forum.xda-developers.com/showpost.php?p=52765674&postcount=5
+  set_perm $MODPATH/system/bin/mfe-xz 0 2000 0755 u:object_r:system_file:s0
 }
 
 # You can add more functions to assist your custom script code

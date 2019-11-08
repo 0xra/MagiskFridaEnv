@@ -10,11 +10,11 @@ function kill_fs() {
     pid=$(ps | grep frida-server | grep -o "[0-9]\{1,\}" | head -1)
 
     # android oreo
-    if [[ $? -ne 0 ]] || [[ $pid == "" ]]; then
+    if [[ $? -ne 0 ]] || [[ "$pid" == "" ]]; then
         pid=$(ps -A | grep frida-server | grep -o "[0-9]\{1,\}" | head -1)
     fi
 
-    if [[ $? -ne 0 ]] || [[ $pid == "" ]]; then
+    if [[ $? -ne 0 ]] || [[ "$pid" == "" ]]; then
         return
     fi
 
@@ -37,9 +37,9 @@ function start_fs() {
     echo "starting frida-server.$1"
     frida-server.$1 -D
 
-    # if [ $? -eq 0 ]; then
-    #     echo $1>/system/bin/magiskfridaenv.conf
-    # fi 
+    if [ $? -eq 0 ]; then
+        save_history_to_service_sh $1
+    fi 
     
     sleep 1
 }
@@ -47,8 +47,9 @@ function start_fs() {
 
 function usage() {
     echo ''
-    echo ' ls        list available versions of frida-server'
-    echo ' [version] start the target version of frida-server'
+    echo ' ls              list available local versions of frida-server'
+    echo ' [version]       start the target version of frida-server'
+    echo ' fetch [version] fetch the target version with curl (default to latest)'
     echo ''
 }
 
@@ -60,7 +61,7 @@ function inner_boot() {
         last_version=$1
     else        
         last_version=$(cat $conf)
-        if [ $last_version == "" ]; then
+        if [ "$last_version" == "" ]; then
             last_version=$1
         else
             ls /system/bin/frida-server.$last_version >/dev/null 2>&1
@@ -74,7 +75,42 @@ function inner_boot() {
     
 }
 
-if [[ $# -eq 0 ]] || [[ $1 == "help" ]] || [[ $1 == "--help" ]]; then
+function save_history_to_service_sh() {
+
+    service_sh_path="/sbin/.magisk/modules/magiskfridaenv/service.sh"
+    cat $service_sh_path >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        return
+    fi
+
+cat > $service_sh_path << EOF
+#!/system/bin/sh
+# Do NOT assume where your module will be located.
+# ALWAYS use $MODDIR if you need to know where this script
+# and module is placed.
+# This will make sure your module will still work
+# if Magisk change its mount point in the future
+MODDIR=${0%/*}
+
+# This script will be executed in late_start service mode
+EOF
+
+    echo "mfe $1" >> $service_sh_path
+}
+
+
+# https://gist.github.com/lukechilds/a83e1d7127b78fef38c2914c4ececc3c
+get_latest_release() {
+#   curl --silent "https://api.github.com/repos/$1/releases/latest" | # Get latest release from GitHub api
+#     grep '"tag_name":' |                                            # Get tag line
+#     sed -E 's/.*"([^"]+)".*/\1/'                                    # Pluck JSON value
+
+    curl -k --silent "https://api.github.com/repos/$1/releases/latest" | # Get latest release from GitHub api
+        grep '"tag_name": ' |                                            # Get tag line
+        grep -o "[0-9\.]\{1,\}"                                          # Pluck JSON value
+}
+
+if [[ $# -eq 0 ]] || [[ "$1" == "help" ]] || [[ "$1" == "--help" ]]; then
     usage
     exit
 fi
@@ -84,7 +120,104 @@ fi
 #     exit
 # fi  
 
-if [[ $1 == "ls" ]] || [[ $1 == "--ls" ]]; then
+if [[ "$1" == "ls" ]] || [[ "$1" == "--ls" ]]; then
+    inner_ls
+    exit
+fi
+
+if [[ "$1" == "fetch" ]]; then
+
+    save_path="/sbin/.magisk/modules/magiskfridaenv/system/bin"
+    cat $save_path/mfe >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "error with operating $save_path : $?"
+        exit
+    fi
+
+    abi=$(getprop ro.product.cpu.abi)
+
+    if [ "$abi" == "armeabi-v7a" ]; then
+        abi="arm"
+    elif [ "$abi" == "arm64-v8a" ]; then
+        abi="arm64"
+    else
+        echo "current abi does not support fetch (curl)."
+    fi
+
+    echo "current abi is: $abi"
+
+    curl --help >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "install Curl For Android module with magisk first."
+        exit
+    fi
+
+    if [[ $# -eq 1 ]] || [[ "$2" == "latest" ]]; then
+        echo "getting latest version name..."
+        version=$(get_latest_release "frida/frida")
+        if [ "$version" == "" ]; then
+            echo "get latest version name faild."
+            exit
+        fi
+    else
+        version=$2
+    fi
+
+
+    echo "target version is : ${version}"
+    ls "/system/bin/frida-server.${version}" >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo "frida-server.${version} exists."
+        chmod 755 "/system/bin/frida-server.${version}"
+        exit
+    fi
+
+    # https://github.com/frida/frida/releases/download/12.7.20/frida-server-12.7.20-android-arm.xz
+    file_name="frida-server-${version}-android-${abi}"
+    url="https://github.com/frida/frida/releases/download/${version}/${file_name}.xz"
+
+    echo "downloading ${file_name}.xz"
+    echo "you can set proxy with export http_proxy and https_proxy"
+    curl -k --silent -L -o "/data/local/tmp/${file_name}.xz" $url
+    if [ $? -ne 0 ]; then
+        echo "download ${file_name}.xz failed : $?"
+        exit
+    fi
+
+    ls "/data/local/tmp/${file_name}.xz" >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "download ${file_name}.xz failed : $?"
+        exit
+    fi
+
+    echo "decompressing ${file_name}.xz"
+    mfe-xz -d "/data/local/tmp/${file_name}.xz"
+    if [ $? -ne 0 ]; then
+        echo "decompress ${file_name} failed : $?"
+        exit
+    fi
+
+    echo "renaming ${file_name}.xz to frida-server.${version}"
+    mv "/data/local/tmp/${file_name}" "/data/local/tmp/frida-server.${version}"
+    if [ $? -ne 0 ]; then
+        echo "rename ${file_name}.xz to frida-server.${version} failed : $?"
+        exit
+    fi
+
+    echo "move frida-server.${version} to magisk path"
+    mv "/data/local/tmp/frida-server.${version}" "${save_path}/frida-server.${version}"
+    if [ $? -ne 0 ]; then
+        echo "move frida-server.${version} to magisk path failed : $?"
+        exit
+    fi
+
+    chmod 755 "${save_path}/frida-server.${version}"
+    
+    echo "copy frida-server.${version} to /system/bin"
+
+    cp "${save_path}/frida-server.${version}" "/system/bin/frida-server.${version}"
+    chmod 755 "/system/bin/frida-server.${version}"
+
     inner_ls
     exit
 fi
