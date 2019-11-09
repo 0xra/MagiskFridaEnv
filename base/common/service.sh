@@ -7,4 +7,12 @@
 MODDIR=${0%/*}
 
 # This script will be executed in late_start service mode
-mfe 12.7.18
+# while [ "$(getprop sys.boot_completed)" != "1" ]; do
+#     sleep 1
+# done
+
+while [ ! -d "/storage/emulated/0" ]; do
+  sleep 1
+done
+
+mfe 12.7.18 >${MODDIR}/mfe.log

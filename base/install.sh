@@ -137,6 +137,8 @@ on_install() {
   # Extend/change the logic to whatever you want
   ui_print "- Extracting module files"
   unzip -o "$ZIPFILE" 'system/*' -d $MODPATH >&2
+
+
 }
 
 # Only some special files require specific permissions
@@ -148,13 +150,16 @@ set_permissions() {
   set_perm_recursive $MODPATH 0 0 0755 0644
 
   # Custom permissions
+  mkdir /storage/emulated/0/mfe-frida-server
+
   for file in `ls $MODPATH/system/bin/ | grep -e "^frida-server"`; do
     echo $MODPATH/system/bin/$file
-    set_perm $MODPATH/system/bin/$file 0 2000 0755 u:object_r:system_file:s0
+    # set_perm $MODPATH/system/bin/$file 0 2000 0755 u:object_r:system_file:s0
+    mv $MODPATH/system/bin/$file /storage/emulated/0/mfe-frida-server/$file
   done
   set_perm $MODPATH/system/bin/mfe 0 2000 0755 u:object_r:system_file:s0
   # https://forum.xda-developers.com/showpost.php?p=52765674&postcount=5
-  set_perm $MODPATH/system/bin/mfe-xz 0 2000 0755 u:object_r:system_file:s0
+  # set_perm $MODPATH/system/bin/mfe-xz 0 2000 0755 u:object_r:system_file:s0
 }
 
 # You can add more functions to assist your custom script code

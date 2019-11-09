@@ -34,16 +34,25 @@ Zip files will be generated in the same folder, grab the right architecture.
 ## `mfe` 
 
 ```sh
-adb shell su -c "mfe ls"
+# adb shell
+su
+
+mfe help
+#  ls              list available local versions of frida-server
+#  [version]       start the target version of frida-server
+#  fetch [version] fetch the target version with curl (default to latest)
+
+mfe ls
 # frida-server.12.7.13
 # frida-server.12.7.14
 # frida-server.12.7.16
 
-adb shell su -c "mfe 12.7.13"
+mfe 12.7.13
 # killing pid: 4690
 # starting frida-server.12.7.13
 
-adb shell su -c "mfe --help"
+mfe fetch 12.7.18
+# ...
 ```
 
 ![](./01.png)
@@ -60,4 +69,12 @@ adb shell su -c "mfe --help"
 
 Or pass the version you want:
 
-`mfe fetch 12.7.18`
+`mfe fetch 12.7.18`  
+
+## add a version manually 
+
+push `frida-server.12.7.20` into the `/storage/emulated/0/mfe-frida-server/` folder, then run `mfe ls`, `frida-server.12.7.20` will be added into the list. 
+
+## TODO 
+
+- mount image on sdcard in order to save the `/system` space. 

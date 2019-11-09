@@ -1,101 +1,21 @@
 #! /system/bin/sh
 
-function inner_ls() {
-    ls -a /system/bin | grep frida-server.
-    return
-}
+###############################
 
-function kill_fs() {
-    # root      260   1     26856  2632  poll_sched b5f23a5c S frida-server.12.7.18
-    pid=$(ps | grep frida-server | grep -o "[0-9]\{1,\}" | head -1)
+MODPATH="/data/adb/modules/magiskfridaenv"
+BUSYBOX="/data/adb/magisk/busybox"
+SDCARD="/storage/emulated/0"
 
-    # android oreo
-    if [[ $? -ne 0 ]] || [[ "$pid" == "" ]]; then
-        pid=$(ps -A | grep frida-server | grep -o "[0-9]\{1,\}" | head -1)
+###############################
+
+
+check_elf() {
+    check_res=$(${BUSYBOX} hexdump -n 4 $1 | ${BUSYBOX} grep -o "7f 464c")
+    if [ "${check_res}" = "7f 464c" ] ;then
+        return 0
+    else
+        return 1
     fi
-
-    if [[ $? -ne 0 ]] || [[ "$pid" == "" ]]; then
-        return
-    fi
-
-    echo "killing pid: $pid"
-    kill -9 $pid
-    
-}
-
-function start_fs() {
-
-    ls /system/bin/frida-server.$1 >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        echo "frida-server.$1 not exist"
-        return
-    fi
-
-    kill_fs
-    sleep 1
-
-    echo "starting frida-server.$1"
-    frida-server.$1 -D
-
-    if [ $? -eq 0 ]; then
-        save_history_to_service_sh $1
-    fi 
-    
-    sleep 1
-}
-
-
-function usage() {
-    echo ''
-    echo ' ls              list available local versions of frida-server'
-    echo ' [version]       start the target version of frida-server'
-    echo ' fetch [version] fetch the target version with curl (default to latest)'
-    echo ''
-}
-
-function inner_boot() {
-    conf="/system/bin/magiskfridaenv.conf"
-
-    ls $conf >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        last_version=$1
-    else        
-        last_version=$(cat $conf)
-        if [ "$last_version" == "" ]; then
-            last_version=$1
-        else
-            ls /system/bin/frida-server.$last_version >/dev/null 2>&1
-            if [ $? -ne 0 ]; then
-                last_version=$1
-            fi
-        fi
-    fi
-
-    start_fs $last_version
-    
-}
-
-function save_history_to_service_sh() {
-
-    service_sh_path="/sbin/.magisk/modules/magiskfridaenv/service.sh"
-    cat $service_sh_path >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        return
-    fi
-
-cat > $service_sh_path << EOF
-#!/system/bin/sh
-# Do NOT assume where your module will be located.
-# ALWAYS use $MODDIR if you need to know where this script
-# and module is placed.
-# This will make sure your module will still work
-# if Magisk change its mount point in the future
-MODDIR=${0%/*}
-
-# This script will be executed in late_start service mode
-EOF
-
-    echo "mfe $1" >> $service_sh_path
 }
 
 
@@ -106,45 +26,127 @@ get_latest_release() {
 #     sed -E 's/.*"([^"]+)".*/\1/'                                    # Pluck JSON value
 
     curl -k --silent "https://api.github.com/repos/$1/releases/latest" | # Get latest release from GitHub api
-        grep '"tag_name": ' |                                            # Get tag line
-        grep -o "[0-9\.]\{1,\}"                                          # Pluck JSON value
+        ${BUSYBOX} grep '"tag_name": ' |                                            # Get tag line
+        ${BUSYBOX} grep -o "[0-9\.]\{1,\}"                                          # Pluck JSON value 
 }
 
-if [[ $# -eq 0 ]] || [[ "$1" == "help" ]] || [[ "$1" == "--help" ]]; then
-    usage
-    exit
-fi
 
-# if [[ $1 == "boot" ]] && [[ $# -eq 2 ]]; then
-#     inner_boot $2
-#     exit
-# fi  
+ls_fs() {
+    ls -a /system/bin | ${BUSYBOX} grep -e "^frida-server\.[0-9\.]\{1,\}$"
+}
 
-if [[ "$1" == "ls" ]] || [[ "$1" == "--ls" ]]; then
-    inner_ls
-    exit
-fi
 
-if [[ "$1" == "fetch" ]]; then
 
-    save_path="/sbin/.magisk/modules/magiskfridaenv/system/bin"
-    cat $save_path/mfe >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        echo "error with operating $save_path : $?"
-        exit
+pkill_fs() {
+    # root      260   1     26856  2632  poll_sched b5f23a5c S frida-server.12.7.18
+
+    # pid=$(ps | ${BUSYBOX} grep frida-server | ${BUSYBOX} grep -o "[0-9]\{1,\}" | ${BUSYBOX} head -1)
+
+    # # android oreo
+    # if [[ $? -ne 0 ]] || [[ "${pid}" == "" ]]; then
+    #     pid=$(ps -A | ${BUSYBOX} grep frida-server | ${BUSYBOX} grep -o "[0-9]\{1,\}" | ${BUSYBOX} head -1)
+    # fi
+
+    pid=$(${BUSYBOX} ps -A | ${BUSYBOX} grep -v "grep" | ${BUSYBOX} grep frida-server | ${BUSYBOX} grep -o "[0-9]\{1,\}" | ${BUSYBOX} head -1)
+
+    if [[ $? -ne 0 ]] || [[ "${pid}" == "" ]]; then
+        return 0
     fi
+
+    echo "killing pid: ${pid}"
+    kill -9 ${pid}
+    return $?
+}
+
+
+start_fs() {
+
+    # ls /system/bin/frida-server.$1 >/dev/null 2>&1
+    # if [ $? -ne 0 ]; then
+    #     echo "frida-server.$1 not exist"
+    #     return
+    # fi
+
+    version=$1
+
+    if [ ! -f /system/bin/frida-server.${version} ]; then
+        echo "frida-server.${version} not exist"
+        return
+    fi
+
+    echo "killing old frida-server..."
+    pkill_fs
+    if [[ $? -ne 0 ]]; then
+        echo "kill old frida-server faild : $?"
+        return
+    fi
+
+    sleep 1
+
+    echo "starting frida-server.${version}"
+
+    frida-server.${version} -D
+    if [ $? -eq 0 ]; then
+        save_history_to_service_sh ${version}
+    fi 
+    
+    sleep 1
+}
+
+
+save_history_to_service_sh() {
+
+    # service_sh_path="${MODPATH}/service.sh"
+    # cat $service_sh_path >/dev/null 2>&1
+    # if [ $? -ne 0 ]; then
+    #     return
+    # fi
+    version=$1
+
+cat > ${MODPATH}/service.sh << EOF
+#!/system/bin/sh
+# Do NOT assume where your module will be located.
+# ALWAYS use $MODDIR if you need to know where this script
+# and module is placed.
+# This will make sure your module will still work
+# if Magisk change its mount point in the future
+MODDIR=${0%/*}
+
+# This script will be executed in late_start service mode
+while [ "\$(getprop sys.boot_completed)" != "1" ]; do
+    sleep 1
+done
+
+EOF
+
+    echo "mfe ${version}" >> ${MODPATH}/service.sh
+}
+
+
+
+
+fetch() {
+    # MODPATH="/data/adb/modules/magiskfridaenv"
+    # cat $MODPATH/system/bin/mfe >/dev/null 2>&1
+    # if [ $? -ne 0 ]; then
+    #     echo "error with operating ${MODPATH} : $?"
+    #     exit
+    # fi
+
 
     abi=$(getprop ro.product.cpu.abi)
 
-    if [ "$abi" == "armeabi-v7a" ]; then
+    if [ "${abi}" == "armeabi-v7a" ]; then
         abi="arm"
-    elif [ "$abi" == "arm64-v8a" ]; then
+    elif [ "${abi}" == "arm64-v8a" ]; then
         abi="arm64"
     else
         echo "current abi does not support fetch (curl)."
+        return
     fi
 
-    echo "current abi is: $abi"
+    echo "current abi is: ${abi}"
+
 
     curl --help >/dev/null 2>&1
     if [ $? -ne 0 ]; then
@@ -152,16 +154,19 @@ if [[ "$1" == "fetch" ]]; then
         exit
     fi
 
-    if [[ $# -eq 1 ]] || [[ "$2" == "latest" ]]; then
+
+
+    if [[ $# -eq 0 ]] || [[ "$1" == "latest" ]]; then
         echo "getting latest version name..."
         version=$(get_latest_release "frida/frida")
-        if [ "$version" == "" ]; then
+        if [ "${version}" == "" ]; then
             echo "get latest version name faild."
             exit
         fi
     else
-        version=$2
+        version=$1
     fi
+
 
 
     echo "target version is : ${version}"
@@ -172,55 +177,146 @@ if [[ "$1" == "fetch" ]]; then
         exit
     fi
 
+
+
     # https://github.com/frida/frida/releases/download/12.7.20/frida-server-12.7.20-android-arm.xz
     file_name="frida-server-${version}-android-${abi}"
     url="https://github.com/frida/frida/releases/download/${version}/${file_name}.xz"
 
     echo "downloading ${file_name}.xz"
     echo "you can set proxy with export http_proxy and https_proxy"
-    curl -k --silent -L -o "/data/local/tmp/${file_name}.xz" $url
+
+    rm -f ${SDCARD}/mfe-frida-server/${file_name}*
+
+    curl -k --silent -L -o "${SDCARD}/mfe-frida-server/${file_name}.xz" $url
     if [ $? -ne 0 ]; then
         echo "download ${file_name}.xz failed : $?"
         exit
     fi
 
-    ls "/data/local/tmp/${file_name}.xz" >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
+
+    # ls "${SDCARD}/mfe-frida-server/${file_name}.xz" >/dev/null 2>&1
+    # if [ $? -ne 0 ]; then
+    if [ ! -f ${SDCARD}/mfe-frida-server/${file_name}.xz ]; then
         echo "download ${file_name}.xz failed : $?"
         exit
     fi
+
+
+
+
 
     echo "decompressing ${file_name}.xz"
-    mfe-xz -d "/data/local/tmp/${file_name}.xz"
+    ${BUSYBOX} xz -d "${SDCARD}/mfe-frida-server/${file_name}.xz"
     if [ $? -ne 0 ]; then
         echo "decompress ${file_name} failed : $?"
         exit
     fi
 
+    check_elf ${SDCARD}/mfe-frida-server/${file_name}
+    if [ $? -ne 0 ]; then
+        echo "${file_name} is not ELF : $?"
+        exit
+    fi
+
+
+
     echo "renaming ${file_name}.xz to frida-server.${version}"
-    mv "/data/local/tmp/${file_name}" "/data/local/tmp/frida-server.${version}"
+    mv ${SDCARD}/mfe-frida-server/${file_name} ${SDCARD}/mfe-frida-server/frida-server.${version}
     if [ $? -ne 0 ]; then
         echo "rename ${file_name}.xz to frida-server.${version} failed : $?"
         exit
     fi
 
-    echo "move frida-server.${version} to magisk path"
-    mv "/data/local/tmp/frida-server.${version}" "${save_path}/frida-server.${version}"
+
+
+    # echo "move frida-server.${version} to ${SDCARD}/mfe-frida-server"
+    # mv /data/local/tmp/frida-server.${version} ${SDCARD}/mfe-frida-server/frida-server.${version}
+    # if [ $? -ne 0 ]; then
+    #     echo "move frida-server.${version} to ${SDCARD}/mfe-frida-server failed : $?"
+    #     exit
+    # fi
+
+
+  
+
+    echo "copy frida-server.${version} to /system/bin"
+    # cp "${MODPATH}/fs/frida-server.${version}" "/system/bin/frida-server.${version}"
+    # chmod 755 "/system/bin/frida-server.${version}"
+
+    # ln -s "${MODPATH}/fs/frida-server.${version}" "/system/bin/frida-server.${version}" >/dev/null 2>&1
+    cp ${SDCARD}/mfe-frida-server/frida-server.${version} /system/bin/frida-server.${version}
+    chmod 755 /system/bin/frida-server.${version}
+
+    echo ""
+    ls_fs
+
+}
+
+
+
+###############################
+
+
+
+
+check_perm() {
+    service_sh_path="${MODPATH}/service.sh"
+    cat $service_sh_path >/dev/null 2>&1
     if [ $? -ne 0 ]; then
-        echo "move frida-server.${version} to magisk path failed : $?"
+        echo "Please run mfe as root!"
+        echo "If it's root now, reinstall MagiskFridaEnv."
+        
         exit
     fi
+}
 
-    chmod 755 "${save_path}/frida-server.${version}"
-    
-    echo "copy frida-server.${version} to /system/bin"
 
-    cp "${save_path}/frida-server.${version}" "/system/bin/frida-server.${version}"
-    chmod 755 "/system/bin/frida-server.${version}"
+ln_fs() {
+    # MODPATH="/data/adb/modules/magiskfridaenv"
+    for file in `ls ${SDCARD}/mfe-frida-server | ${BUSYBOX} grep -e "^frida-server\.[0-9\.]\{1,\}$"`; do
+        # echo $MODPATH/fs/${file} 
+        # ls /system/bin/${file} >/dev/null 2>&1
+        # if [ $? -ne 0 ]; then
+        if [ ! -f /system/bin/${file} ]; then
+            check_elf ${SDCARD}/mfe-frida-server/${file} >/dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                echo "copy ${file} to /system/bin"
+                cp ${SDCARD}/mfe-frida-server/${file} /system/bin/${file} 
+                chmod 755 /system/bin/${file} 
+            fi
+        fi
+    done
+}
 
-    inner_ls
+usage() {
+    echo ''
+    echo ' ls              list available local versions of frida-server'
+    echo ' [version]       start the target version of frida-server'
+    echo ' fetch [version] fetch the target version with curl (default to latest)'
+    echo ''
+}
+
+
+###############################
+
+check_perm
+
+ln_fs
+
+if [[ $# -eq 0 ]] || [[ "$1" == "help" ]] || [[ "$1" == "--help" ]]; then
+    usage
     exit
+elif [[ "$1" == "ls" ]] || [[ "$1" == "--ls" ]]; then
+    ls_fs
+    exit
+elif [[ "$1" == "fetch" ]]; then
+    if [ $# -eq 1 ]; then
+        fetch "latest"
+    else
+        fetch $2
+    fi   
+    exit     
+else
+    start_fs $1
 fi
-
-start_fs $1
-exit

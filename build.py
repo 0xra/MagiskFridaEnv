@@ -62,29 +62,22 @@ def create_service_script(module_dir, frida_release):
 # and module is placed.
 # This will make sure your module will still work
 # if Magisk change its mount point in the future
-MODDIR={0}
+MODDIR=${{0%/*}}
 
 # This script will be executed in late_start service mode
-mfe {1}
-""".format(r'${0%/*}', frida_release)
+# while [ "$(getprop sys.boot_completed)" != "1" ]; do
+#     sleep 1
+# done
+
+while [ ! -d "/storage/emulated/0" ]; do
+  sleep 1
+done
+
+mfe {0} >${{MODDIR}}/mfe.log
+""".format(frida_release)
 
     with open(os.path.join(module_dir, "common/service.sh"), "w", newline='\n') as f:
         f.write(service_sh)
-
-
-def create_module_prop(path):
-    # Create module.prop file.
-    module_prop = """id=magiskfridaenv
-name=MagiskFridaEnv
-version=v{0}
-versionCode={1}
-author=toolsRE
-description=Forked from AeonLucid/MagiskFrida. Runs frida-server on boot as root with magisk. And select the version.
-support=https://github.com/toolsRE/MagiskFridaEnv/issues
-minMagisk=1530""".format("0.0.1", "0.0.1".replace(".", ""))  # format(frida_release, frida_release.replace(".", ""))
-
-    with open(os.path.join(path, "module.prop"), "w", newline='\n') as f:
-        f.write(module_prop)
 
 
 def create_module(platform, frida_releases):
@@ -104,9 +97,6 @@ def create_module(platform, frida_releases):
 
     # cd into module directory.
     os.chdir(module_dir)
-
-    # Create module.prop.
-    create_module_prop(module_dir)
 
     for frida_release in frida_releases:
         # Download frida-server archives.
@@ -191,6 +181,8 @@ if __name__ == "__main__":
             archs.append(opt_value)
         if opt_name in ('-v', '--version'):
             versions.append(opt_value)
+        if opt_name in ('--no-fs'):
+            no_fs = True
 
     if len(archs) == 0:
         archs = ['arm', 'arm64']

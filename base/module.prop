@@ -1,0 +1,8 @@
+id=magiskfridaenv
+name=MagiskFridaEnv
+version=v0.0.1
+versionCode=0.0.1
+author=toolsRE
+description=Forked from AeonLucid/MagiskFrida. Runs frida-server on boot as root with magisk. And select the version.
+support=https://github.com/toolsRE/MagiskFridaEnv/issues
+minMagisk=1530
