@@ -113,13 +113,13 @@ cat > ${MODPATH}/service.sh << EOF
 MODDIR=${0%/*}
 
 # This script will be executed in late_start service mode
-while [ "\$(getprop sys.boot_completed)" != "1" ]; do
+while [ ! -d "/storage/emulated/0/mfe-frida-server" ]; do
     sleep 1
 done
 
 EOF
 
-    echo "mfe ${version}" >> ${MODPATH}/service.sh
+    echo "mfe ${version} >\${MODDIR}/mfe.log" >> ${MODPATH}/service.sh
 }
 
 

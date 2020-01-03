@@ -69,7 +69,7 @@ MODDIR=${{0%/*}}
 #     sleep 1
 # done
 
-while [ ! -d "/storage/emulated/0" ]; do
+while [ ! -d "/storage/emulated/0/mfe-frida-server" ]; do
   sleep 1
 done
 
